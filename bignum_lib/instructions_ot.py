@@ -333,6 +333,15 @@ def _get_two_gprs_with_imm(asm_str):
         raise SyntaxError('immediate not a number')
     return x1, x2, int(substr[2].strip())
 
+def _get_two_gprs_with_signed_imm(asm_str):
+    """decode standard format with two GPRs and immediate (e.g.: "x20, x21, 5")"""
+    substr = asm_str.split(',')
+    if len(substr) != 3:
+        raise SyntaxError('Syntax error in parameter set. Expected two GPR references and immediate')
+    x1 = _get_single_gpr(substr[0].strip())
+    x2 = _get_single_gpr(substr[1].strip())
+    return x1, x2, int(substr[2].strip())
+
 
 def _get_three_gprs(asm_str):
     """decode standard format with two GPRs and immediate (e.g.: "x20, x21, 5")"""
@@ -535,7 +544,7 @@ def check_bounds_wrd_ref(wrd_ref):
 
 
 def check_bounds_i_type_imm(imm):
-    if not (0 <= imm < 2 ** I_TYPE_IMM_WIDTH):
+    if not (-(2 ** (I_TYPE_IMM_WIDTH-1)) <= imm < 2 ** I_TYPE_IMM_WIDTH):
         raise SyntaxError('imm out of bounds')
 
 
@@ -588,6 +597,18 @@ class GInsBn(GIns):
             m.set_z_m_l(res)
         else:
             m.setx_z_m_l(res)
+
+    def exec_set_c_m_flags(self, res, m):
+        if self.flag_group == 'standard':
+            m.set_c_m(res)
+        else:
+            m.setx_c_m(res)
+
+    def exec_set_l_flag(self, res, m):
+        if self.flag_group == 'standard':
+            m.set_l(res)
+        else:
+            m.setx_l(res)
 
     def exec_get_carry(self, m):
         if self.flag_group == 'standard':
@@ -1030,7 +1051,7 @@ class GInsBnMulqacc(GInsBn):
         self.wrs1_qw_sel = wrs1_qw_sel
         self.wrs2_qw_sel = wrs2_qw_sel
         self.imm = acc_shift_imm
-        super().__init__(wrd, wrs1, wrs2, None, ctx)
+        super().__init__(wrd, wrs1, wrs2, 'standard', ctx)
 
     def get_asm_str(self):
         asm_str = self.MNEM
@@ -1104,8 +1125,10 @@ class IBnMulqaccSo(GInsBnMulqacc):
         m.set_acc(m.get_acc() >> m.hw_width)
         if self.wrd_hw_sel == 'lower':
             m.set_reg_half_word(self.rd, 0, shift_out)
+            self.exec_set_l_flag(shift_out, m)
         elif self.wrd_hw_sel == 'upper':
             m.set_reg_half_word(self.rd, 1, shift_out)
+            self.exec_set_c_m_flags(shift_out << 128, m)
         else:
             raise SyntaxError('Illegal half word indicator')
         trace_str = self.get_asm_str()[1]
@@ -1250,6 +1273,7 @@ class IBnNot(GIns):
         self.rs = rs
         self.shift_type = shift_type
         self.shift_bytes = shift_bytes
+        self.flag_group = 'standard'
         super().__init__(ctx)
 
     def get_asm_str(self):
@@ -1267,6 +1291,12 @@ class IBnNot(GIns):
         if shift_bits % 8:
             raise SyntaxError('Input shift immediate not byte aligned')
         return cls(rd, rs, shift_type, int(shift_bits / 8), ctx.ins_ctx)
+
+    def exec_set_zml_flags(self, res, m):
+        if self.flag_group == 'standard':
+            m.set_z_m_l(res)
+        else:
+            m.setx_z_m_l(res)
 
     def execute(self, m):
         if self.shift_type == 'right':
@@ -1287,7 +1317,7 @@ class IBnRshi(GInsBn):
 
     def __init__(self, rd, rs1, rs2, shift_bits, ctx):
         self.shift_bits = shift_bits
-        super().__init__(rd, rs1, rs2, None, ctx)
+        super().__init__(rd, rs1, rs2, 'standard', ctx)
 
     def get_asm_str(self):
         asm_str = self.MNEM + ' w' + str(self.rd) + ', w' + str(self.rs1) + ', w' + str(self.rs2)
@@ -1306,6 +1336,7 @@ class IBnRshi(GInsBn):
     def execute(self, m):
         conc = (m.get_reg(self.rs2) << m.XLEN) + m.get_reg(self.rs1)
         res = (conc >> self.shift_bits) & m.xlen_mask
+        #self.exec_set_zml_flags(res, m)
         m.set_reg(self.rd, res)
         trace_str = self.get_asm_str()[1]
         return trace_str, None
@@ -1651,16 +1682,34 @@ class IOtAdd(IOtGpr):
         return trace_str, None
 
 
-class IOtAddi(IOtImm):
+class IOtAddi(GIns):
     """Base add immediate"""
 
     MNEM = 'ADDI'
+
+    def __init__(self, xd, xs, imm, ctx):
+        self.xd = xd
+        self.xs = xs
+        self.imm = imm
+        super().__init__(ctx)
+
+    def get_asm_str(self):
+        asm_str = self.MNEM + ' x' + str(self.xd) + ', x' + str(self.xs) + ', ' + str(self.imm)
+        return self.hex_str, asm_str, self.malformed
 
     def execute(self, m):
         res = m.get_gpr(self.xs) + self.imm
         m.set_gpr(self.xd, res & m.gpr_mask)
         trace_str = self.get_asm_str()[1]
         return trace_str, None
+
+    @classmethod
+    def enc(cls, addr, mnem, params, ctx):
+        xd, xs, imm = _get_two_gprs_with_signed_imm(params)
+        check_bounds_gpr_ref(xd)
+        check_bounds_gpr_ref(xs)
+        check_bounds_i_type_imm(imm)
+        return cls(xd, xs, imm, ctx.ins_ctx)
 
 
 class IOtSub(IOtGpr):
@@ -1909,8 +1958,7 @@ class IOtLui(GIns):
         return cls(grd, imm, ctx.ins_ctx)
 
     def execute(self, m):
-        grp_low_12_bits = m.get_gpr(self.grd) & 2**12-1
-        new_val = (self.imm << 12) + grp_low_12_bits
+        new_val = (self.imm << 12)
         m.set_gpr(self.grd, new_val)
         trace_str = self.get_asm_str()[1]
         return trace_str, None
@@ -1937,6 +1985,115 @@ class IOtLw(GIns):
 
     def execute(self, m):
         m.set_gpr(self.grd, m.get_dmem_otbn(m.get_gpr(self.grs)+self.offset))
+        trace_str = self.get_asm_str()[1]
+        return trace_str, None
+
+class IOtSw(GIns):
+    """Load word"""
+
+    MNEM = 'SW'
+
+    def __init__(self, grd, offset, grs, ctx):
+        self.grd = grd
+        self.offset = offset
+        self.grs = grs
+        super().__init__(ctx)
+
+    def get_asm_str(self):
+        asm_str = self.MNEM + ' x' + str(self.grs) + ', ' + str(self.offset) + '(' + str(self.grd) + ')'
+        return self.hex_str, asm_str, self.malformed
+
+    @classmethod
+    def enc(cls, addr, mnem, params, ctx):
+        grs, offset, grd = _get_two_gprs_with_offset(params)
+        return cls(grd, offset, grs, ctx.ins_ctx)
+
+    def execute(self, m):
+        addr = m.get_gpr(self.grd)+self.offset
+        m.set_dmem_otbn(addr, m.get_gpr(self.grs))
+        trace_str = self.get_asm_str()[1]
+        return trace_str, None
+
+#############################################
+#          Pseudo Instructions              #
+#############################################
+
+
+class IOtPseudoLi(GIns):
+    """Load immediate pseudo instruction
+    replacement for addi grd, x0, <imm>"""
+
+    MNEM = 'LI'
+
+    def __init__(self, grd, imm, ctx):
+        self.grd = grd
+        self.imm = imm
+        super().__init__(ctx)
+
+    def get_asm_str(self):
+        asm_str = self.MNEM + ' x' + str(self.grd) + ', ' + str(self.imm)
+        return self.hex_str, asm_str, self.malformed
+
+    @classmethod
+    def enc(cls, addr, mnem, params, ctx):
+        grd, imm = _get_gpr_and_imm(params)
+        return cls(grd, imm, ctx.ins_ctx)
+
+    def execute(self, m):
+        m.set_gpr(self.grd, self.imm)
+        trace_str = self.get_asm_str()[1]
+        return trace_str, None
+
+class IOtPseudoRet(GIns):
+    """Ret pseudo instruction
+    replacement for jalr x0, x1, 0"""
+
+    MNEM = 'RET'
+
+    def __init__(self, addr, ctx, label=None):
+        self.addr = addr
+        super().__init__(ctx)
+
+    def get_asm_str(self):
+        asm_str = self.MNEM
+        return self.hex_str, asm_str, self.malformed
+
+    @classmethod
+    def enc(cls, addr, mnem, params, ctx):
+        return cls(addr, ctx.ins_ctx)
+
+    def execute(self, m):
+        try:
+            jump_target = m.get_gpr(1)
+        except CallStackUnderrun:
+            if m.get_pc() == m.stop_addr:
+                # We have an underrun but are at the stop address anyways, so this is fine
+                jump_target = m.get_pc()
+            else:
+                m.finish()
+                jump_target = m.get_pc()
+
+        trace_str = self.get_asm_str()[1]
+        return trace_str, jump_target
+
+class IOtPseudoNop(GIns):
+    """NOP pseudo instruction, replacement for addi x0, x0, 0"""
+
+    MNEM = 'NOP'
+
+    def __init__(self, addr, ctx, label=None):
+        self.addr = addr
+        super().__init__(ctx)
+
+    def get_asm_str(self):
+        asm_str = self.MNEM
+        return self.hex_str, asm_str, self.malformed
+
+    @classmethod
+    def enc(cls, addr, mnem, params, ctx):
+        return cls(addr, ctx.ins_ctx)
+
+    def execute(self, m):
         trace_str = self.get_asm_str()[1]
         return trace_str, None
 
