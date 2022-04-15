@@ -12,6 +12,8 @@ montmul operations.
 from bignum_lib.machine import Machine
 from bignum_lib.sim_helpers import *
 
+from Crypto.PublicKey import RSA
+
 # Switch to True to get a full instruction trace
 ENABLE_TRACE_DUMP = False
 
@@ -237,9 +239,10 @@ def load_program_otbn_asm():
     # und function labels)
     function_addr = {v: k for k, v in ctx.labels.items()}
     start_addr_dict = {'modload': function_addr['modload'], 'mulx': function_addr['mulx'],
-                       'mul1': function_addr['mul1'], 'modexp': function_addr['modexp'] }
+                       'mul1': function_addr['mul1'], 'modexp': function_addr['modexp'], 'modexp_65537': function_addr['modexp_65537'] }
     stop_addr_dict = {'modload': len(ins_objects)-1, 'mulx': function_addr['mm1_sub_cx']-1,
-                       'mul1': function_addr['sqrx_exp']-1, 'modexp': function_addr['modload']-1}
+                       'mul1': function_addr['sqrx_exp']-1, 'modexp': function_addr['modexp_65537']-1,
+                      'modexp_65537': function_addr['modload']-1}
 
 
 def dump_trace_str(trace_string):
@@ -309,7 +312,7 @@ def run_montout(bn_words, p_a, p_out):
     global stats
     global ctx
     load_pointer(bn_words, DMEM_LOC_IN_PTRS, p_a, 0, p_out)
-    machine = Machine(dmem.copy(), ins_objects, start_addr_dict['mul1'], stop_addr_dict['mul1'], ctx=ctx)
+    machine = Machine(dmem.copy(), ins_objects, start_addr_dict['mul1'], stop_addr_dict['mul1'], ctx=ctx, breakpoints=breakpoints)
     machine.stats = stats
     cont = True
     while cont:
@@ -335,6 +338,30 @@ def run_modexp(bn_words, exp):
     load_pointer(bn_words, DMEM_LOC_MUL_PTRS, DMEMP_IN, DMEMP_OUT, DMEMP_OUT)
     load_pointer(bn_words, DMEM_LOC_OUT_PTRS, DMEMP_OUT, DMEMP_EXP, DMEMP_OUT)
     machine = Machine(dmem.copy(), ins_objects, start_addr_dict['modexp'], stop_addr_dict['modexp'], ctx=ctx)
+    machine.stats = stats
+    cont = True
+    while cont:
+        cont, trace_str, cycles = machine.step()
+        dump_trace_str(trace_str)
+        inst_cnt += 1
+        cycle_cnt += cycles
+    res = get_full_bn_val(DMEMP_OUT, machine, bn_words)
+    dmem = machine.dmem.copy()
+    return res
+
+def run_modexp_65537(bn_words, inval):
+    """Runs the primitive for modular exponentiation (modexp)"""
+    global dmem
+    global inst_cnt
+    global cycle_cnt
+    global stats
+    global ctx
+    load_full_bn_val(DMEMP_EXP, 65537)
+    load_pointer(bn_words, DMEM_LOC_IN_PTRS, DMEMP_IN, DMEMP_RR, DMEMP_IN)
+    load_pointer(bn_words, DMEM_LOC_SQR_PTRS, DMEMP_OUT, DMEMP_OUT, DMEMP_OUT)
+    load_pointer(bn_words, DMEM_LOC_MUL_PTRS, DMEMP_IN, DMEMP_OUT, DMEMP_OUT)
+    load_pointer(bn_words, DMEM_LOC_OUT_PTRS, DMEMP_OUT, DMEMP_EXP, DMEMP_OUT)
+    machine = Machine(dmem.copy(), ins_objects, start_addr_dict['modexp_65537'], stop_addr_dict['modexp_65537'], ctx=ctx)
     machine.stats = stats
     cont = True
     while cont:
@@ -404,7 +431,6 @@ def check_rr(mod, rr_test):
     RR = R*R % mod
     assert rr_test == RR, "Mismatch of local and machine calculated RR"
 
-
 def check_dinv(dinv_test, r_mod, mod):
     """Check if montgomery modular inverse from simulator matches a locally computed one"""
     mod_i = mod_inv(mod, r_mod)
@@ -433,7 +459,8 @@ def rsa_encrypt(mod, bn_words, msg):
     check_dinv(dinv, 2**BN_WORD_LEN, mod)
     check_rr(mod, rr)
     load_full_bn_val(DMEMP_IN, msg)
-    enc = modexp_word(bn_words, msg, EXP_PUB)
+    #enc = modexp_word(bn_words, msg, EXP_PUB)
+    enc = run_modexp_65537(bn_words, msg)
     check_modexp(enc, msg, EXP_PUB, mod)
     return enc
 
@@ -447,6 +474,8 @@ def rsa_decrypt(mod, bn_words, priv_key, enc):
     decrypt = run_modexp(bn_words, priv_key)
     #decrypt = run_modexp_blinded(bn_words, priv_key)
     return decrypt
+
+
 
 def main():
     """main"""
@@ -466,18 +495,39 @@ def main():
 
     msg_str = 'Hello bignum, can you encrypt and decrypt this for me?'
     msg = get_msg_val(msg_str)
+    print(hex(msg))
 
     tests = [
         ('enc', 768),
         ('dec', 768),
-        ('enc', 1024),
-        ('dec', 1024),
-        ('enc', 2048),
-        ('dec', 2048),
-        ('enc', 3072),
-        ('dec', 3072)
+        #('enc', 1024),
+        #('dec', 1024),
+        #('enc_rand', 1024),
+        #('dec_rand', 1024),
+        #('enc', 2048),
+        #('dec', 2048),
+        #('enc', 3072),
+        #('dec', 3072)
     ]
     tests_results = []
+
+    rand_key_1024 = RSA.generate(1024)
+    rand_key_2048 = RSA.generate(2048)
+    rand_key_3072 = RSA.generate(3072)
+
+    RSA_rand_N = {}
+    RSA_rand_N[1024] = rand_key_1024.n
+    RSA_rand_N[2048] = rand_key_2048.n
+    RSA_rand_N[3072] = rand_key_3072.n
+
+    RSA_rand_D = {}
+    RSA_rand_D[1024] = rand_key_1024.d
+    RSA_rand_D[2048] = rand_key_2048.d
+    RSA_rand_D[3072] = rand_key_3072.d
+
+    print('random key modulus 3072: ' + hex(RSA_rand_N[3072]))
+    print('random key private exponent 3072: ' + hex(RSA_rand_D[3072]))
+    print('random key public exponent 3072: ' + hex(RSA_rand_D[3072]))
 
     for i in range(len(tests)):
         test = tests[i]
@@ -493,9 +543,20 @@ def main():
         cycle_cnt = 0
         stats = init_stats()
 
-        if test_op == 'enc':
+        if test_op == 'enc_rand':
+            enc = rsa_encrypt(RSA_rand_N[test_width], test_width // 256, msg)
+            print('random key modulus: ' + hex(RSA_rand_N[test_width]))
+            print('encrypted message (random key): ' + hex(enc))
+        elif test_op == 'enc':
             enc = rsa_encrypt(RSA_N[test_width], test_width // 256, msg)
             print('encrypted message: ' + hex(enc))
+        elif test_op == 'dec_rand':
+            decrypt = rsa_decrypt(RSA_rand_N[test_width], test_width // 256,
+                                  RSA_rand_D[test_width], enc)
+            #check_decrypt(msg, decrypt)
+            print('random key modulus: ' + hex(RSA_rand_N[test_width]))
+            print('random private exponent: ' + hex(RSA_rand_D[test_width]))
+            print('decrypted message (random key): ' + get_msg_str(decrypt))
         elif test_op == 'dec':
             decrypt = rsa_decrypt(RSA_N[test_width], test_width // 256,
                                   RSA_D[test_width], enc)
