@@ -242,6 +242,7 @@ JALR x0, x1, 0
 mm1_sub_cx:
 BN.WSRRW w3, 2, w3
 BN.ADD w3, w3, w31
+BN.ADD w3, w3, w31
 CSRRS x2, 1984, x0
 ANDI x2, x2, 2
 BNE x2, x0, mm1_invsel
