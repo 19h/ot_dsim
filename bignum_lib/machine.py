@@ -451,6 +451,7 @@ class Machine(object):
         """Set the program counter"""
         self.__check_imem_addr(pc)
         self.pc = pc
+        self.finishFlag = True
 
     def get_pc(self):
         """Get the program counter"""
