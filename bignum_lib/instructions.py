@@ -1205,8 +1205,19 @@ class IOr(GIStdShift):
 
 
 class INot(GIStdShift):
-    """Bitwise and + shift (incomplete, encoding of shift unclear)"""
-    MNEM = {0b000: 'not'}  # matched with fun field
+    """Bitwise NOT with optional shift and flag groups
+    
+    'not' - regular NOT with standard flags (fun=0)
+    'notx' - NOT with extended flags (fun=4)
+    
+    Note: Both fun=0 and fun=4 can appear in firmware
+    """
+    # For registration: map unique mnemonics
+    MNEM = {0b000: 'not', 0b100: 'notx'}
+    
+    # Internal mapping: all valid fun values (notx only uses fun=4, but keep complete)
+    _FUN_TO_MNEM = {0b000: 'not', 0b100: 'notx'}
+    
     OP = 0b010010
     SINGLE_INPUT = True
 
@@ -1214,13 +1225,14 @@ class INot(GIStdShift):
 
     def get_asm_str(self):
         rs = self.rs2
-        asm_str = self.MNEM.get(self.fun) + ' r' + str(self.rd) + ', r' + str(rs)
+        mnem = self._FUN_TO_MNEM.get(self.fun, 'not')  # Default to 'not' if unknown
+        asm_str = mnem + ' r' + str(self.rd) + ', r' + str(rs)
         return self.get_hexstr(), asm_str, self.malformed
 
     def get_enc_tab(self):
         enc_tab = self.get_enc_table_hdr() + '\n'
         enc_tab += self.get_bin_with_separators() + '\n'
-        enc_tab += '|< op ><0|><rd ><r|s2>< 0 >|D<shift>|\n'
+        enc_tab += '|< op ><f|><rd ><r|s2>< 0 >|D<shift>|\n'
         enc_tab += 'D=0: left shift; D=1: right shift'
         return enc_tab
 
@@ -1229,7 +1241,11 @@ class INot(GIStdShift):
             shift_type = 'right'
         else:
             shift_type = 'left'
-        return [IBnNot(self.rd, self.rs2, shift_type, self.shift_bytes, self.ctx)]
+        ins = IBnNot(self.rd, self.rs2, shift_type, self.shift_bytes, self.ctx)
+        # Use extended flag group for notx (fun=4)
+        if self.fun == 4:
+            ins.flag_group = 'extended'
+        return [ins]
 
     def execute(self, m):
         if self.shift_right:
@@ -1237,7 +1253,11 @@ class INot(GIStdShift):
         else:
             rsop = (m.get_reg(self.rs2) << self.shift_bytes*8) & m.xlen_mask
         res = ~rsop & m.xlen_mask
-        m.set_z_m_l(res)
+        # Use extended flag setting for notx (fun=4)
+        if self.fun == 4:
+            m.setx_z_m_l(res)
+        else:
+            m.set_z_m_l(res)
         m.set_reg(self.rd, res)
         trace_str = self.get_asm_str()[1]
         return trace_str, None
@@ -2107,31 +2127,59 @@ class INop(GIStdNoParm):
 
 
 class ISigini(GIStd):
-    """Tag"""
-    MNEM = {0: 'sigini'}
+    """CFI Signature Instructions - sigini and sigchk
+    
+    sigini: Initialize signature for Control Flow Integrity
+    sigchk: Check signature matches expected value
+    
+    Note: fun field can be 0 or 1 for sigini, 2 or 3 for sigchk
+    """
+    # For registration: map unique mnemonics (factory only sees these)
+    MNEM = {1: 'sigini', 2: 'sigchk'}
+    
+    # Internal mapping: all valid fun values to mnemonics
+    _FUN_TO_MNEM = {0: 'sigini', 1: 'sigini', 2: 'sigchk', 3: 'sigchk'}
+    
     OP = 0b111110
+    
+    # Override IMM_LEN to use full 23-bit immediate field (bits 22:0)
+    # This overlaps with RD, RS2, RS1 fields, so we don't enforce zero_ranges on them
+    IMM_LEN = 23
+    IMM_POS = 0
 
-    zero_ranges = [Ins.FUN_RANGE, GIStd.RD_RANGE, GIStd.RS2_RANGE, GIStd.RS1_RANGE]
+    zero_ranges = []  # Don't check register fields - they're part of the 23-bit immediate
 
     def __init__(self, ins, ctx):
         super().__init__(ins, ctx)
 
     def get_asm_str(self):
-        asm_str = self.MNEM.get(self.fun) + ' #' + str(self.imm)
+        mnem = self._FUN_TO_MNEM.get(self.fun)
+        if mnem is None:
+            # Unknown fun value - mark as malformed
+            mnem = f'sig_unknown_fun{self.fun}'
+            self.malformed = True
+        asm_str = mnem + ' #' + str(self.imm)
         return self.get_hexstr(), asm_str, self.malformed
 
     def get_enc_tab(self):
         enc_tab = self.get_enc_table_hdr() + '\n'
         enc_tab += self.get_bin_with_separators() + '\n'
-        enc_tab += '|< op >< |     0  |        |<  tag >|'
+        enc_tab += '|< op ><f|     0  |        |<  sig >|'
         return enc_tab
 
     @classmethod
     def enc(cls, addr, mnem, params, ctx):
         ret = 0
         ret += cls.enc_imm(_get_imm(params))
+        # Set fun based on mnemonic (use default values from MNEM dict)
+        if mnem == 'sigchk':
+            ret += cls.enc_fun(2)  # Default to fun=2 for sigchk
+        else:  # sigini
+            ret += cls.enc_fun(1)  # Default to fun=1 for sigini
         ret += cls.enc_op(cls.OP)
-        return cls(ret, ctx.ins_ctx)
+        # Handle both ctx types - might be InsContext directly or have ins_ctx attribute
+        ins_ctx = ctx if not hasattr(ctx, 'ins_ctx') else ctx.ins_ctx
+        return cls(ret, ins_ctx)
 
     def execute(self, m):
         trace_str = self.get_asm_str()[1]
@@ -2221,6 +2269,7 @@ class ICall(GIMidImm):
 class IBranch(GIMidImm):
 
     MNEM = {0b00000000001: 'bl',
+            0b00000000010: 'bm',
             0b00010001000: 'bnc',
             0b00010000000: 'b',
             0b00010000100: 'bnz',
@@ -2306,6 +2355,8 @@ class IBranch(GIMidImm):
         trace_str = self.get_asm_str()[1]
         if self.MNEM.get(self.funb) == 'bl':
             branch = m.get_flag('L')
+        elif self.MNEM.get(self.funb) == 'bm':
+            branch = m.get_flag('M')
         elif self.MNEM.get(self.funb) == 'bnc':
             branch = not m.get_flag('C')
         elif self.MNEM.get(self.funb) == 'b':

@@ -7,8 +7,8 @@
 Uses two random 256 bit wide operands and checks the result for corectness
 """
 
-from bignum_lib.machine import Machine
-from bignum_lib.sim_helpers import *
+from ot_dsim.bignum_lib.machine import Machine
+from ot_dsim.bignum_lib.sim_helpers import *
 import random
 
 # Switch to True to get a full instruction trace

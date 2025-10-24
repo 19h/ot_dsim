@@ -8,10 +8,10 @@ Runs ECC operations based on the primitives contained in the binary blob of
 the p256 lib.
 """
 
-from bignum_lib.machine import Machine
-from bignum_lib.sim_helpers import *
-from sim import ins_objects_from_hex_file
-from sim import ins_objects_from_asm_file
+from ot_dsim.bignum_lib.machine import Machine
+from ot_dsim.bignum_lib.sim_helpers import *
+from ot_dsim.sim import ins_objects_from_hex_file
+from ot_dsim.sim import ins_objects_from_asm_file
 from Crypto.Math.Numbers import Integer
 from Crypto.PublicKey import ECC
 from Crypto.Hash import SHA256

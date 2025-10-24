@@ -3,10 +3,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import argparse
-from bignum_lib.instructions import *
-from bignum_lib.sim_helpers import read_dmem_from_file
-from bignum_lib.sim_helpers import ins_objects_from_asm_file
-from bignum_lib.sim_helpers import ins_objects_from_hex_file
+from ot_dsim.bignum_lib.instructions import *
+from ot_dsim.bignum_lib.sim_helpers import read_dmem_from_file
+from ot_dsim.bignum_lib.sim_helpers import ins_objects_from_asm_file
+from ot_dsim.bignum_lib.sim_helpers import ins_objects_from_hex_file
 
 
 def main():

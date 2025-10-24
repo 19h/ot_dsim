@@ -9,8 +9,8 @@ the generic bignum library. Hence these are wrappers around mainly modexp and
 montmul operations.
 """
 
-from bignum_lib.machine import Machine
-from bignum_lib.sim_helpers import *
+from ot_dsim.bignum_lib.machine import Machine
+from ot_dsim.bignum_lib.sim_helpers import *
 
 from Crypto.PublicKey import RSA
 

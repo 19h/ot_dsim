@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import argparse
-from bignum_lib.assembler import Assembler
+from ot_dsim.bignum_lib.assembler import Assembler
 
 
 def main():

@@ -4,19 +4,19 @@
 
 import argparse
 import logging
-from bignum_lib.sim_helpers import ins_objects_from_asm_file
-from bignum_lib.disassembler import Disassembler
-from bignum_lib.instructions import ILoop
-from bignum_lib.instructions_ot import IOtLoop
-from bignum_lib.instructions_ot import IOtLoopi
-from bignum_lib.instructions_ot import IOtJal
-from bignum_lib.instructions import ICall
-from bignum_lib.instructions_ot import IOtBeq
-from bignum_lib.instructions_ot import IOtBne
-from bignum_lib.instructions import IBranch
-from bignum_lib.instructions_ot import IOtLui
-from bignum_lib.instructions_ot import IOtAddi
-from bignum_lib.instructions import IMovi
+from ot_dsim.bignum_lib.sim_helpers import ins_objects_from_asm_file
+from ot_dsim.bignum_lib.disassembler import Disassembler
+from ot_dsim.bignum_lib.instructions import ILoop
+from ot_dsim.bignum_lib.instructions_ot import IOtLoop
+from ot_dsim.bignum_lib.instructions_ot import IOtLoopi
+from ot_dsim.bignum_lib.instructions_ot import IOtJal
+from ot_dsim.bignum_lib.instructions import ICall
+from ot_dsim.bignum_lib.instructions_ot import IOtBeq
+from ot_dsim.bignum_lib.instructions_ot import IOtBne
+from ot_dsim.bignum_lib.instructions import IBranch
+from ot_dsim.bignum_lib.instructions_ot import IOtLui
+from ot_dsim.bignum_lib.instructions_ot import IOtAddi
+from ot_dsim.bignum_lib.instructions import IMovi
 
 def handle_movi_combined(ins1, ins2):
     return
