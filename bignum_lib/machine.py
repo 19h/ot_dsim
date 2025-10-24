@@ -17,7 +17,7 @@ class Machine(object):
     XLEN = 256  # todo: becomes WLEN
     GPR_WIDTH = 32  # todo: becomes XLEN
     LIMBS = 8
-    DMEM_DEPTH = 1024
+    DMEM_DEPTH = 128
     IMEM_DEPTH = 1024
     DEFAULT_DUMP_FILENAME = 'dmem_dump.hex'
     LOOP_STACK_SIZE = 16

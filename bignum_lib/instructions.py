@@ -1297,8 +1297,11 @@ class ISel(GIStd):
         # fun   # imm
         (0b000, 0b00000001): 'sell',
         (0b000, 0b00000010): 'selm',
+        (0b000, 0b00000100): 'selz',
         (0b000, 0b00001000): 'selc',
         (0b100, 0b00000001): 'sellx',
+        (0b100, 0b00000010): 'selmx',
+        (0b100, 0b00000100): 'selzx',
         (0b100, 0b00001000): 'selcx'}
     OP = 0b011001
 
@@ -1357,10 +1360,16 @@ class ISel(GIStd):
             sel = m.get_flag('M')
         elif self.MNEM.get((self.fun, self.imm)) == 'selc':
             sel = m.get_flag('C')
+        elif self.MNEM.get((self.fun, self.imm)) == 'selz':
+            sel = m.get_flag('Z')
         elif self.MNEM.get((self.fun, self.imm)) == 'sellx':
             sel = m.get_flag('XL')
+        elif self.MNEM.get((self.fun, self.imm)) == 'selmx':
+            sel = m.get_flag('XM')
         elif self.MNEM.get((self.fun, self.imm)) == 'selcx':
             sel = m.get_flag('XC')
+        elif self.MNEM.get((self.fun, self.imm)) == 'selzx':
+            sel = m.get_flag('XZ')
         else:
             raise Exception('Invalid opcode')
         if sel:
