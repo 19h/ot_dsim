@@ -17,7 +17,7 @@ class Machine(object):
     XLEN = 256  # todo: becomes WLEN
     GPR_WIDTH = 32  # todo: becomes XLEN
     LIMBS = 8
-    DMEM_DEPTH = 128
+    DMEM_DEPTH = 1024
     IMEM_DEPTH = 1024
     DEFAULT_DUMP_FILENAME = 'dmem_dump.hex'
     LOOP_STACK_SIZE = 16
@@ -1042,8 +1042,8 @@ class Machine(object):
         """Call this when a final 'ret' occurs without anything on the call stack"""
         self.finishFlag = True
         # break here
-        if breakpoint:
-            self.toggle_breakpoint(self.get_pc())
+        # if breakpoint:
+        #     self.toggle_breakpoint(self.get_pc())
 
     def step(self):
         """Next step"""
@@ -1053,7 +1053,7 @@ class Machine(object):
 
         if self.finishFlag:
             halt = True
-            print('\nECALL hit or reached \'ret\' instruction with empty call stack. Finishing here.\n')
+            # print('\nECALL hit or reached \'ret\' instruction with empty call stack. Finishing here.\n')
 
         is_break, passes = self.__check_break()
         if is_break:
