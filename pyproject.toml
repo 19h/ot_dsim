@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ot_dsim"
+version = "0.3.0"
+description = "Simulator for bignum cryptographic accelerator coprocessor (dcrypto / OTBN)"
+requires-python = ">=3.8"
+license = {text = "Apache-2.0"}
+dependencies = [
+    "pycryptodome",
+    "tabulate",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: C",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+
+[tool.cibuildwheel]
+build = "cp38-* cp39-* cp310-* cp311-* cp312-* cp313-*"
+skip = "*-musllinux* pp*"
+test-requires = ["pytest"]
+test-command = "python -m pytest {project}/tests/test_c_backend.py {project}/tests/test_c_machine.py -q"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+
+[tool.cibuildwheel.macos]
+archs = ["x86_64", "arm64"]
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]

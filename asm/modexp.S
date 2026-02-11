@@ -496,6 +496,62 @@ modexp:
   jal       x1, mul1_exp
   ecall
 
+modexp_65537:
+  /* Specialized modular exponentiation for the public exponent e=65537.
+   * 65537 = 2^16 + 1, so: base^65537 = base * base^(2^16).
+   * Algorithm:
+   *   1. mulx: transform input to Montgomery domain (IN * RR -> IN)
+   *   2. Copy IN (base_mont) to OUT area
+   *   3. 16x sqrx_exp: square OUT sixteen times (OUT = base_mont^(2^16))
+   *   4. 1x mulx_exp: multiply IN * OUT -> OUT (base_mont * base_mont^(2^16))
+   *   5. mul1_exp: back-transform from Montgomery domain
+   *
+   * Pointer tables expected in DMEM:
+   *   dmem[0] (byte 0):  IN_PTRS  - for mulx (IN * RR -> IN)
+   *   dmem[1] (byte 32): SQR_PTRS - for sqrx_exp (OUT * OUT -> OUT)
+   *   dmem[2] (byte 64): MUL_PTRS - for mulx_exp (IN * OUT -> OUT)
+   *   dmem[3] (byte 96): OUT_PTRS - for mul1_exp (back-transform)
+   */
+
+  /* Step 1: Montgomery transform: OUT = IN * RR
+   * Uses IN_PTRS with p_c=OUT to store base_mont in OUT area.
+   * Also need base_mont in IN for the later multiply step.
+   * So we do mulx(IN*RR->OUT), then copy OUT to IN. */
+  jal       x1, mulx
+
+  /* Step 2: Copy base_mont from OUT area to IN area.
+   * After mulx, setupPtrs was called so x30=bn_words.
+   * We reload the source (OUT) and dest (IN) pointers from the
+   * MUL_PTRS table (dmem[2]) which has p_a=IN, p_b=OUT. */
+  lw        x16, 80(x0)
+  lw        x21, 76(x0)
+  addi      x8, x0, 4
+  loop      x30, 2
+  bn.lid    x8, 0(x16++)
+  bn.sid    x8, 0(x21++)
+
+  /* Step 3: 16 squarings: OUT = OUT^(2^16) */
+  loopi     16, 2
+  jal       x1, sqrx_exp
+  addi      x0, x0, 0
+
+  /* Step 4: Multiply base_mont(IN) * OUT -> OUT */
+  jal       x1, mulx_exp
+
+  /* Step 5: Back-transform from Montgomery domain */
+  addi      x3, x0, 0
+  bn.lid    x3, 96(x0)
+  lw        x16, 96(x0)
+  lw        x17, 100(x0)
+  lw        x18, 104(x0)
+  lw        x19, 108(x0)
+  lw        x20, 112(x0)
+  lw        x21, 116(x0)
+  lw        x22, 120(x0)
+  lw        x23, 124(x0)
+  jal       x1, mul1_exp
+  ecall
+
 modload:
 
   /* prepare all-zero reg */

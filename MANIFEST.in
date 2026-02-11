@@ -1,0 +1,15 @@
+include LICENSE
+include README.md
+include requirements.txt
+include pyproject.toml
+include setup.py
+
+# C extension source
+recursive-include csrc *.c *.h
+
+# Assembly and hex test data
+recursive-include asm *.S *.asm *.asm_anno *.s
+recursive-include hex *.hex
+
+# Tests
+recursive-include tests *.py
